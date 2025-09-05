@@ -189,9 +189,37 @@ Read: LR and SVM are effectively tied on ranking metrics (AUC/AUPRC). At 0.5, SV
 - A thresholded LR/SVM can prioritize follow-ups for the top-risk segment, improving yield of true diabetes cases without overwhelming clinic capacity.
 - Monitoring fairness and subgroup error rates is necessary before deployment.
 
-## Next Steps
-- Probability calibration (keep Platt; consider isotonic) and threshold tuning by capacity (e.g., fix expected daily follow-ups).
-- Add feature interactions (e.g., age×BMI) and explore gradient-boosted trees (XGBoost/LightGBM) for potential AUPRC gains.
-- Carefully evaluate clinical_notes (TF-IDF or embeddings) only if they add value beyond templated text.
-- Expand fairness audits (gender/race/location) and report subgroup PR curves at the chosen threshold.
-- Post-deployment monitoring: drift checks and quarterly recalibration.
+## Next Steps (aligned to course modules)
+
+1) Threshold tuning & probability calibration  
+   - Keep **Platt (sigmoid) calibration** and try **Isotonic** via `CalibratedClassifierCV`.
+   - Choose an operating point by **capacity** (e.g., ≥0.60 precision) and report the resulting recall + confusion matrix.
+
+2) Feature engineering & nonlinearity  
+   - Add simple, defensible features from EDA: `age_50_64`, `age_65_plus`, `bmi_ge_30`, `bmi_ge_35`, `hba1c_ge_6_5`, `glucose_ge_160`, and an `age*bmi` interaction.
+   - Consider **binning** or **splines** for age (non-linear pattern without overfitting).
+
+3) Dimensionality reduction
+   - Revisit **PCA / TruncatedSVD** on the OHE matrix (try 20–100 components).  
+   - Keep components only if **AUPRC** improves on the validation split.
+
+4) Ensembles (in-scope, scikit-learn)
+   - Add **RandomForestClassifier** and **HistGradientBoostingClassifier** as stronger baselines.
+   - Compare using **AUPRC** and the same threshold policy. 
+
+5) Clinical notes → simple text features
+   - If `clinical_notes` are informative, start with **TF-IDF (unigrams/bigrams)** → **Logistic Regression** or **LinearSVC**.
+   - Do an **ablation**: structured features vs text vs both. Keep text only if it **moves AUPRC up** meaningfully.
+
+6) Fairness & subgroup reporting  *(good practice; ties to evaluation modules)*
+   - Report **precision/recall** (and AUPRC if sample size allows) by **gender / race / location** at the chosen threshold.
+   - Check for large gaps; if present, consider **recalibration** or threshold adjustments with stakeholder guidance.
+
+7) Model selection & stability
+   - Run **Stratified K-Fold CV** (e.g., k=5) for the top 2–3 models to verify that gains are not split-specific.
+   - Report mean ± std of **AUPRC**.
+
+8) Monitoring & drift
+   - Define a simple monitoring plan: track **class prevalence**, **AUPRC**, and input distributions monthly.
+   - Re-calibrate quarterly or when data drift is detected (e.g., PSI > 0.2 for key features).
+
