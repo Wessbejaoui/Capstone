@@ -1,16 +1,61 @@
-# Capstone — EDA & Baselines
-Comparing Classifiers on a Diabetes Risk Dataset
+# Capstone Project — Predicting Diabetes Risk
 
-## Overview
-We compared three classifiers: Logistic Regression (LR), Decision Tree (DT), and Support Vector Machine (SVM, linear with probability calibration).
-The goal is to predict diabetes (binary target) from demographics and routine clinical variables (e.g., hbA1c_level, blood_glucose_level, bmi, age, comorbidities). The dataset contains 100,000 rows × 17 columns after basic cleaning.
+Comparing Classifiers on a Clinical Screening Dataset
 
-Because the positive class rate is ~8.5%, the task is imbalanced. We report AUPRC (area under the precision–recall curve) as the primary metric. We also show AUC-ROC, and we compare models at (a) the default 0.5 threshold and (b) a policy threshold chosen to achieve ≥ 0.60 precision, then report the resulting recall and confusion matrices.
+# Overview
 
-## Business Understanding
-Healthcare teams need to prioritize screening and intervention for patients at higher risk of diabetes. The costs of mistakes are asymmetric:
-- False negative (miss a true diabetic): delayed diagnosis, downstream complications, higher costs.
-- False positive (flag a non-diabetic): unnecessary follow-up/labs, but less harmful than an FN.
+This project develops and compares several machine learning models to predict diabetes risk based on demographics and common clinical indicators. The dataset contains approximately 100,000 patient records × 17 features after cleaning.
+
+  We evaluated the following classifiers:
+* Logistic Regression (LR)
+* Decision Tree (DT)
+* Support Vector Machine (SVM) with probability calibration
+* XGBoost (Gradient-Boosted Trees)
+
+Because only about 8.5% of records are positive (diabetic), this is an imbalanced classification problem. We use AUPRC (Area Under the Precision–Recall Curve) as the primary metric, since it’s more informative than accuracy for rare events.
+We also report AUC-ROC, and evaluate models at both:
+* the default 0.5 threshold, and
+* a policy threshold achieving ≥ 0.60 precision, mirroring real-world screening capacity constraints.
+
+# Business Context
+
+Healthcare systems must prioritize screening and follow-up for individuals most at risk of diabetes. The cost of errors is asymmetric:
+* False negatives (missed diabetics) → delayed diagnosis, higher long-term costs.
+* False positives → unnecessary follow-ups but relatively low clinical risk.
+
+# Dataset Summary at a glance:
+
+Shape: 100,000 rows × 17 columns
+Target prevalence: ~8.5% positive (diabetes)
+Here are the key Features and description that would be considered detremental for this study.
+
+| **Feature**                   | **Description**                                                                 |
+|-------------------------------|---------------------------------------------------------------------------------|
+| `age`                         | Patient age (top-coded near ~80 years)                                         |
+| `gender`                      | Recorded biological sex                                                        |
+| `bmi`                         | Body Mass Index (BMI); >30 = obese                                             |
+| `hbA1c_level`                 | Average 3-month blood sugar (≥6.5% = diabetic range)                           |
+| `blood_glucose_level`         | Instant glucose reading                                                        |
+| `hypertension`, `heart_disease` | Comorbidity flags (0/1)                                                      |
+| `smoking_history`             | Categorical; large “No Info” bucket handled explicitly                         |
+| `year`                        | Record year, used for drift checks                                             |
+| `smoking_missing`             | Engineered flag marking missing smoking data                                   |
+
+# Data Cleaning & Sanity Checks
+
+* Duplicates removed to prevent inflated performance.
+* Invalid ages (<1 year) dropped.
+* BMI winsorized (1st–99th percentiles) to reduce outlier impact.
+* Smoking “No Info” → NaN + smoking_missing flag (missingness carries signal).
+* Imbalance noted (~8.5% positives); accuracy avoided in favor of AUPRC and recall metrics.
+
+All processing steps are modular and reproducible using **df_clean** as the working dataset.
+
+# Operational Implications
+
+Focus on precision–recall trade-offs, not raw accuracy.
+Choose thresholds that balance precision and recall according to screening capacity (≥ 0.60 precision target).
+Evaluate fairness across demographics to avoid biased screening recommendations.
 
 ## Implications:
 - Focus on precision–recall trade-offs instead of accuracy.
@@ -28,6 +73,19 @@ We still report AUC-ROC and show ROC/PR curves for completeness.
 Shape: 100,000 rows × 17 columns.
 Target prevalence: ~8.5% diabetes (imbalanced).
 
+Key fields:
+
+* age — patient age in years (top-coded around ~80 in this data).
+* gender — recorded sex (categorical)
+* bmi — body-mass index; >30 indicates obesity.
+* hbA1c_level — three-month blood-sugar average; ≥6.5% is diabetic range.
+* blood_glucose_level — single-time glucose measurement; very high values are red flags.
+* hypertension, heart_disease — comorbidity flags (0/1).
+* smoking_history — categorical status; a large “No Info” bucket existed and was handled explicitly.
+* year — encounter year (helps catch drift/recording artifacts).
+
+*Engineered flag: smoking_missing to preserve signal from missing smoking data.*
+
 ## Sanity Checks & Why They Matter
 - Work on df_clean (not df) — preserves raw data, makes the notebook restartable/reproducible.
 - Drop duplicates — prevents inflated performance from repeated rows.
@@ -42,6 +100,9 @@ Below is a snapshot of the distribution:
 - Age validity: drop age < 1 year (nonsense for this context).
 - BMI outliers: winsorize at 1st/99th percentiles to stabilize models/plots.
 - Race one-hots already provided; we used them as-is (could collapse to a single categorical if needed).
+- Duplicates removed to avoid optimistic metrics from repeated patients.
+- Invalid ages (<1) dropped; unlikely for the screening population.
+- Imbalance: only ~8.5% positives. Accuracy is misleading, so we evaluate with AUPRC and thresholded precision/recall.
 
 ## EDA Highlights (with plot takeaways)
 The takeaway under each plot states: mean/median/min/max and whether diabetics trend higher or lower on that feature.
@@ -130,96 +191,139 @@ Large “No Info” bucket (now NaN + smoking_missing flag). Missingness itself 
      - LR/DT: StandardScaler (numeric) + OHE (categorical).
      - SVM: same, but sparse-friendly scaling (with_mean=False), then LinearSVC wrapped in CalibratedClassifierCV (method="sigmoid") to get calibrated probabilities.
 
+# Modeling Approach
+
+Feature Engineering & Preprocessing
+* Numerical: age, bmi, hbA1c_level, blood_glucose_level, hypertension, heart_disease, year, smoking_missing.
+* Categorical: gender, smoking_history (encoded via OneHotEncoder).
+* Split: 75/25 train–test split (stratified by outcome).
+* Class imbalance: handled using class_weight='balanced' for LR, SVM, and DT.
+
+Each model was evaluated on both ranking metrics (AUPRC, AUC) and classification thresholds.
+
+# Model Implementations
+
+| **Model**            | **Notes**                                         |
+|----------------------|---------------------------------------------------|
+| `Logistic Regression` | Baseline interpretable model                      |
+| `SVM (Linear)`        | Calibrated probabilities using Platt scaling      |
+| `Decision Tree`       | High interpretability, lower precision            |
+| `XGBoost`             | Nonlinear, high-performance ensemble              |
+
   ## Threshold Policy
   - Besides the default 0.5 threshold, we pick a policy threshold that achieves ≥ 0.60 precision, then report the resulting recall and confusion matrix.
   - This mirrors how a clinic would tune alerts to control follow-up load.
 
-# Results
-  ## Metrics at default 0.5 threshold
-| Model         |  AUC-ROC  |   AUPRC   |  Accuracy | Precision |   Recall  |
-| ------------- | :-------: | :-------: | :-------: | :-------: | :-------: |
-| Logistic      |   0.960   | **0.807** |   0.886   |   0.422   | **0.881** |
-| SVM (linear)  | **0.961** |   0.806   | **0.957** | **0.838** |   0.624   |
-| Decision Tree | **0.965** |   0.804   |   0.823   |   0.320   | **0.952** |
-
-Read: LR and SVM are effectively tied on ranking metrics (AUC/AUPRC). At 0.5, SVM trades recall for precision; LR does the opposite. DT maximizes recall but at low precision (too many false positives).
-
-  ## Metrics at a policy threshold (target precision ≥ 0.60)
-| Model         | Chosen thr | Precision |   Recall  | AUC-ROC |   AUPRC   |
-| ------------- | :--------: | :-------: | :-------: | :-----: | :-------: |
-| SVM (linear)  |    0.211   |    0.60   | **0.764** |  0.961  |   0.806   |
-| Logistic      |    0.741   |    0.60   |   0.762   |  0.960  | **0.807** |
-| Decision Tree |    1.000   |  **1.00** |   0.666   |  0.965  |   0.804   |
-
 ## Confusion matrices at chosen thresholds
-- Logistic: [[21564, 1080], [505, 1620]]
 
-<img width="607" height="509" alt="image" src="https://github.com/user-attachments/assets/25aa33c4-e213-404d-a575-3bc58307f22d" />
+<img width="603" height="491" alt="image" src="https://github.com/user-attachments/assets/769caeca-56b1-4564-a091-e35245269a9a" />
 
-- Decision Tree: [[22644, 0], [709, 1416]]
+**Logistic Regression: Counts**
 
-<img width="607" height="509" alt="image" src="https://github.com/user-attachments/assets/7cec0abf-bd0d-4bac-9ef4-a465fe6ebee4" />
+The logistic model correctly identified most non-diabetic cases (21,564 TN) and a majority of diabetics (1,620 TP), achieving solid recall (0.762) and balanced precision (0.600).
+This shows it’s effective for screening while maintaining a manageable number of false positives (1,080), fitting well within a clinical workflow.
 
-- SVM: [[21562, 1082], [502, 1623]]
+<img width="607" height="509" alt="image" src="https://github.com/user-attachments/assets/d9e483c2-3c13-461f-bc53-e0c74e77132c" />
 
-<img width="607" height="509" alt="image" src="https://github.com/user-attachments/assets/dd67751f-f0a9-4f71-b48c-70762269845b" />
+**Logistic Regression: Row-normalized**
+
+About 95% of non-diabetic patients are correctly classified, while 76% of diabetics are successfully identified.
+This reflects strong generalization, with minor leakage (24% missed diabetics), making it suitable for early-stage population screening.
+
+<img width="603" height="491" alt="image" src="https://github.com/user-attachments/assets/14de2d93-7cce-46ca-9e2a-336a2befc433" />
+
+**Decision Tree: Counts**
+
+The decision tree predicts almost no false positives (0 FP), achieving perfect precision (1.0) but reduced recall (0.666), missing over 700 diabetics.
+While its results look clean, it’s overly conservative — flagging too few diabetics, which could lead to under-detection in practice.
+
+<img width="607" height="509" alt="image" src="https://github.com/user-attachments/assets/3e5da7f4-cb17-4013-838f-41c02bf1e8d0" />
+
+**Decision Tree: Row-normalized**
+
+All non-diabetics (100%) are predicted correctly, but only two-thirds of diabetics are caught.
+This pattern indicates overfitting to the majority class, prioritizing precision at the cost of recall — an imbalance unsuitable for medical screening contexts.
+
+<img width="603" height="491" alt="image" src="https://github.com/user-attachments/assets/165e13c5-5430-4689-8f0c-348b7795f01d" />
+
+**SVM: Counts**
+
+The linear SVM produces results nearly identical to logistic regression, correctly detecting 1,623 diabetics with comparable precision (0.600) and recall (0.764).
+This consistency demonstrates that linear models converge on similar discriminative boundaries, confirming reliability and stability of findings.
+
+<img width="607" height="509" alt="image" src="https://github.com/user-attachments/assets/2a12a6c1-24ac-48f1-837a-5edb8b191430" />
+
+**SVM: Row-normalized**
+
+Roughly 95% of non-diabetics are classified correctly, while 76% of diabetics are detected — a mirror of logistic regression’s balance.
+It offers a robust and interpretable trade-off between over-flagging and under-detection, making it a dependable baseline for production use.
+
+# Results Summary
+
+### Default Threshold (0.5)
+
+| **Model**            | **AUC-ROC** | **AUPRC** | **Precision** | **Recall** | **Accuracy** |
+|----------------------|:-----------:|:----------:|:--------------:|:-----------:|:-------------:|
+| `Logistic Regression` | 0.960 | **0.807** | 0.422 | **0.881** | 0.886 |
+| `SVM (Linear)`        | **0.961** | 0.806 | **0.838** | 0.624 | **0.957** |
+| `Decision Tree`       | **0.965** | 0.804 | 0.320 | **0.952** | 0.823 |
+
+At 0.5, **SVM** favors precision while **LR** favors recall. **DT** achieves high recall but poor precision.
+
+---
+
+### Policy Threshold (≥ 0.60 Precision)
+
+| **Model**            | **Threshold** | **Precision** | **Recall** | **AUC-ROC** | **AUPRC** |
+|----------------------|:-------------:|:--------------:|:-----------:|:-----------:|:----------:|
+| `Logistic Regression` | 0.741 | 0.60 | 0.762 | 0.960 | **0.807** |
+| `SVM (Linear)`        | 0.211 | 0.60 | **0.764** | **0.961** | 0.806 |
+| `Decision Tree`       | 1.000 | **1.00** | 0.666 | 0.965 | 0.804 |
+
+At the operational policy level, **LR** and **SVM** perform nearly identically; **DT** overfits and predicts very few positives.
 
 
-## Takeaways
-- Primary metric (AUPRC): LR is marginally best; SVM is essentially tied.
-- Operational point (≥ 0.60 precision): LR and SVM both deliver ~0.76 recall; DT achieves 1.00 precision only by severely cutting recall (predicts very few positives).
-- Recommendation: Use Logistic Regression as the primary baseline (slightly better AUPRC, simplest to explain). Keep SVM as a strong secondary comparator. Use Decision Tree for interpretability, not for deployment at this threshold policy.
+## XGBoost Results
+
+| **Metric** | **Value** |
+|-------------|-----------|
+| **Best Params** | `{'subsample': 0.7, 'reg_lambda': 1.0, 'n_estimators': 300, 'min_child_weight': 5, 'max_depth': 6, 'learning_rate': 0.03, 'gamma': 1.0, 'colsample_bytree': 0.7}` |
+| **AUPRC** | **0.881** |
+| **AUC-ROC** | **0.978** |
+| **Precision (0.5)** | 0.454 |
+| **Recall (0.5)** | 0.922 |
+| **Precision (≥0.60 Policy)** | 0.600 |
+| **Recall (≥0.60 Policy)** | 0.857 |
+
+XGBoost outperformed all prior models on both **AUPRC** and **AUC**, identifying more true diabetics while keeping false positives manageable.
+
+# Key Insights
+
+* HbA1c and glucose remain the most predictive features.
+* XGBoost delivers the best overall performance (AUPRC=0.881), capturing non-linear relationships missed by linear models.
+* Logistic Regression remains the most interpretable model, well-suited as a transparent baseline.
+* Decision Tree provides explainability but struggles at required precision levels.
+* A threshold policy around ≥0.60 precision yields the best operational trade-off for clinics managing limited screening resources.
+
+# Business Interpretation
+
+* A thresholded LR or XGBoost system can flag high-risk patients with precision-balanced recall.
+* This allows clinics to focus follow-ups on the top-risk decile, improving yield without overwhelming staff.
+* Before deployment, fairness and demographic bias checks are essential.
+* Continuous monitoring for data drift, class prevalence, and model calibration is recommended.
+
+
+## Summary
+
+| **Model**             | **Strength**                                         | **Recommended Use**                                      |
+|------------------------|------------------------------------------------------|-----------------------------------------------------------|
+| `Logistic Regression`  | Most interpretable; robust baseline                  | Clinical explainability                                   |
+| `SVM (Linear)`         | Strong precision; balanced trade-offs                | Secondary comparator                                      |
+| `Decision Tree`        | Interpretable structure                              | Visualization & education                                 |
+| `XGBoost`              | Best predictive power (**AUPRC = 0.881**)            | Production-grade model with SHAP explainability           |
+
+**XGBoost** ultimately demonstrates the **highest predictive value** and scalability, while **Logistic Regression** provides a strong interpretable baseline. Together, they form a **complementary pair** suitable for operational deployment in a diabetes risk screening pipeline.
 
 
 
-## Interpreting Model Drivers
-- Logistic coefficients / SVM weights: largest positive contributions from hbA1c_level, blood_glucose_level, then age and bmi — aligns with clinical intuition.
-- Decision Tree splits: emphasize glucose/HbA1c bands and related risk signals; interpretable but underperform on precision at the required policy point.
-
-# Findings, Business Interpretation, and Next Steps
-
-## Findings
-- The dataset contains strong, clinically plausible signals (hbA1c, glucose, BMI, age).
-
-- With precision ≥ 0.60, LR/SVM provide ~0.76 recall, enabling a practical screening workflow with manageable follow-ups.
-
-- DT is interpretable, but not competitive under the chosen precision policy.
-
-## Business Interpretation
-- A thresholded LR/SVM can prioritize follow-ups for the top-risk segment, improving yield of true diabetes cases without overwhelming clinic capacity.
-- Monitoring fairness and subgroup error rates is necessary before deployment.
-
-## Next Steps (aligned to course modules)
-
-1) Threshold tuning & probability calibration  
-   - Keep **Platt (sigmoid) calibration** and try **Isotonic** via `CalibratedClassifierCV`.
-   - Choose an operating point by **capacity** (e.g., ≥0.60 precision) and report the resulting recall + confusion matrix.
-
-2) Feature engineering & nonlinearity  
-   - Add simple, defensible features from EDA: `age_50_64`, `age_65_plus`, `bmi_ge_30`, `bmi_ge_35`, `hba1c_ge_6_5`, `glucose_ge_160`, and an `age*bmi` interaction.
-   - Consider **binning** or **splines** for age (non-linear pattern without overfitting).
-
-3) Dimensionality reduction
-   - Revisit **PCA / TruncatedSVD** on the OHE matrix (try 20–100 components).  
-   - Keep components only if **AUPRC** improves on the validation split.
-
-4) Ensembles (in-scope, scikit-learn)
-   - Add **RandomForestClassifier** and **HistGradientBoostingClassifier** as stronger baselines.
-   - Compare using **AUPRC** and the same threshold policy. 
-
-5) Clinical notes → simple text features
-   - If `clinical_notes` are informative, start with **TF-IDF (unigrams/bigrams)** → **Logistic Regression** or **LinearSVC**.
-   - Do an **ablation**: structured features vs text vs both. Keep text only if it **moves AUPRC up** meaningfully.
-
-6) Fairness & subgroup reporting  *(good practice; ties to evaluation modules)*
-   - Report **precision/recall** (and AUPRC if sample size allows) by **gender / race / location** at the chosen threshold.
-   - Check for large gaps; if present, consider **recalibration** or threshold adjustments with stakeholder guidance.
-
-7) Model selection & stability
-   - Run **Stratified K-Fold CV** (e.g., k=5) for the top 2–3 models to verify that gains are not split-specific.
-   - Report mean ± std of **AUPRC**.
-
-8) Monitoring & drift
-   - Define a simple monitoring plan: track **class prevalence**, **AUPRC**, and input distributions monthly.
-   - Re-calibrate quarterly or when data drift is detected (e.g., PSI > 0.2 for key features).
 
